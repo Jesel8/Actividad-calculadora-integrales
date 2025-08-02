@@ -1,14 +1,24 @@
-# app.py (VERSIÓN DE DEPURACIÓN ACTIVA)
+# app.py (VERSIÓN FINAL COMPLETA CON PDF Y SIN ERRORES DE ATRIBUTO)
 import tkinter as tk
-from tkinter import Label, Button, Frame, Entry, messagebox, Menu, PhotoImage
+from tkinter import (
+    Label,
+    Button,
+    Frame,
+    Entry,
+    messagebox,
+    Menu,
+    PhotoImage,
+    filedialog,
+)
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from sympy import latex
 import os
-import traceback  # <<< DEBUG >>> ¡Importamos la herramienta clave para depurar!
-
+import traceback
+import pdf_generator  # Importamos nuestro nuevo módulo
 from style import Style
 import calculator_logic as calc
+from history_window import HistoryWindow
 
 
 # ===============================================================
@@ -16,14 +26,23 @@ import calculator_logic as calc
 # ===============================================================
 class IntegralCalculatorApp:
 
-    # ... (Los métodos de inicialización y creación no necesitan cambios) ...
     def __init__(self, root):
         self.root = root
         self.style = Style("dark")
         self.root.title("Calculadora de Integrales Definidas")
         self.root.geometry("1000x800")
         self.root.configure(bg=self.style.colors["BACKGROUND"])
-        self.frames_to_style, self.calc_buttons, self.icons = [], [], {}
+
+        # Inicialización de todas las variables de estado
+        self.frames_to_style, self.calc_buttons, self.icons, self.history = (
+            [],
+            [],
+            {},
+            [],
+        )
+        self.last_calculation_data = None
+
+        # Llamadas a métodos de construcción
         self._load_icons()
         self._create_menu()
         self._create_widgets()
@@ -31,6 +50,7 @@ class IntegralCalculatorApp:
         self.reset_plot()
         self.canvas.draw()
 
+    # --- MÉTODOS DE CREACIÓN DE INTERFAZ ---
     def _load_icons(self):
         try:
             base_path = os.path.dirname(os.path.abspath(__file__))
@@ -48,11 +68,19 @@ class IntegralCalculatorApp:
     def _create_menu(self):
         self.menu_bar = Menu(self.root)
         self.root.config(menu=self.menu_bar)
+
+        # Menú Archivo
         file_menu = Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Archivo", menu=file_menu)
+        file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf)
+        file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.root.quit)
+
+        # Menú Ver
         view_menu = Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Ver", menu=view_menu)
+        view_menu.add_command(label="Ver Historial", command=self._show_history_window)
+        view_menu.add_separator()
         theme_menu = Menu(view_menu, tearoff=0)
         view_menu.add_cascade(label="Tema", menu=theme_menu)
         theme_menu.add_command(
@@ -61,11 +89,14 @@ class IntegralCalculatorApp:
         theme_menu.add_command(
             label="Modo Claro", command=lambda: self._apply_theme("light")
         )
+
+        # Menú Ayuda
         help_menu = Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Ayuda", menu=help_menu)
         help_menu.add_command(label="Acerca de...", command=self.show_about_info)
 
     def _create_widgets(self):
+        # Todos los widgets se crean aquí
         main_frame = Frame(self.root, bg=self.style.colors["BACKGROUND"])
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         self.frames_to_style.append(main_frame)
@@ -141,17 +172,20 @@ class IntegralCalculatorApp:
             ["1", "2", "3", "-", "("],
             ["0", ".", "+", "e", ")"],
         ]
-        for i, r in enumerate(buttons):
-            for j, v in enumerate(r):
-                btn = Button(
+        [
+            btn.grid(row=i, column=j, padx=3, pady=3) or self.calc_buttons.append(btn)
+            for i, r in enumerate(buttons)
+            for j, v in enumerate(r)
+            for btn in [
+                Button(
                     parent,
                     text=v,
                     width=5,
                     command=lambda v=v: self.insert_text(v),
                     **self.style.BUTTON_STYLE,
                 )
-                btn.grid(row=i, column=j, padx=3, pady=3)
-                self.calc_buttons.append(btn)
+            ]
+        ]
 
     def _create_status_bar(self):
         self.status_bar = Label(
@@ -163,9 +197,8 @@ class IntegralCalculatorApp:
         )
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
+    # --- LÓGICA PRINCIPAL ---
     def run_calculation(self, update_plot_only=False):
-        print("\n[DEBUG] --- Iniciando run_calculation ---")  # <<< DEBUG >>>
-        print(f"[DEBUG] update_plot_only = {update_plot_only}")  # <<< DEBUG >>>
         try:
             if not update_plot_only:
                 self.status_bar.config(text="Calculando...")
@@ -174,38 +207,36 @@ class IntegralCalculatorApp:
                 self.lower_limit_entry.get(),
                 self.upper_limit_entry.get(),
             )
-            print(
-                f"[DEBUG] Entradas: f(x)='{func_str}', a='{a_str}', b='{b_str}'"
-            )  # <<< DEBUG >>>
-
             if not all([func_str, a_str, b_str]):
                 if not update_plot_only:
                     messagebox.showwarning(
                         "Entrada inválida", "Todos los campos son obligatorios."
                     )
                 return
-
             func = calc.parse_expression(func_str)
-            print(f"[DEBUG] Expresión parseada: {func}")  # <<< DEBUG >>>
-
             if not update_plot_only:
                 res_def = calc.calculate_definite_integral(func, a_str, b_str)
                 res_indef = calc.calculate_indefinite_integral(func)
+                res_def_float = float(res_def)
                 self.result_label.config(
-                    text=f"∫ de {a_str} a {b_str} de f(x) dx ≈ {float(res_def):.4f}\nIntegral indefinida: $ {latex(res_indef)} + C $"
+                    text=f"∫ de {a_str} a {b_str} de f(x) dx ≈ {res_def_float:.4f}\nIntegral indefinida: $ {latex(res_indef)} + C $"
                 )
 
-            print("[DEBUG] Llamando a plot_function...")  # <<< DEBUG >>>
-            self.plot_function(func, a_str, b_str)
+                self.last_calculation_data = {
+                    "func_str": func_str,
+                    "a_str": a_str,
+                    "b_str": b_str,
+                    "result_def": f"{res_def_float:.4f}",
+                    "result_indef_latex": f"$ {latex(res_indef)} + C $",
+                }
+                self.history.insert(0, self.last_calculation_data)
+                if len(self.history) > 50:
+                    self.history.pop()
 
+            self.plot_function(func, a_str, b_str)
             if not update_plot_only:
                 self.status_bar.config(text="Cálculo completado.")
-
         except Exception as e:
-            # <<< DEBUG >>> ¡Mostraremos el error completo en la consola!
-            print("\n!!!!!!!!!! ERROR CAPTURADO EN run_calculation !!!!!!!!!!")
-            traceback.print_exc()
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
             if not update_plot_only:
                 messagebox.showerror(
                     "Error de Cálculo",
@@ -214,30 +245,19 @@ class IntegralCalculatorApp:
                 self.status_bar.config(text=f"Error: {e}")
 
     def plot_function(self, func, a_str, b_str):
-        print("[DEBUG] --- Iniciando plot_function ---")  # <<< DEBUG >>>
         try:
             self.reset_plot(clear_all=True)
-            print("[DEBUG] reset_plot ejecutado.")  # <<< DEBUG >>>
-
             x_vals, y_vals, a_float, b_float = calc.generate_plot_data(
                 func, a_str, b_str
             )
-            # <<< DEBUG >>>
-            print(f"[DEBUG] Datos de gráfica generados: a={a_float}, b={b_float}")
-            print(
-                f"[DEBUG]    Tamaño de x_vals: {x_vals.shape}, Tamaño de y_vals: {y_vals.shape}"
-            )
-
             p_style = self.style.PLOT_STYLE
             self.ax.plot(
                 x_vals,
                 y_vals,
-                label=f"$f(x)={latex(func, mul_symbol='dot').replace('$', '')}$",
+                label=f"$f(x)={latex(func,mul_symbol='dot').replace('$','')}$",
                 color=p_style["line"],
                 linewidth=2,
             )
-            print("[DEBUG] Línea de la función dibujada (ax.plot).")  # <<< DEBUG >>>
-
             self.ax.fill_between(
                 x_vals,
                 y_vals,
@@ -246,33 +266,18 @@ class IntegralCalculatorApp:
                 alpha=0.4,
                 label=f"Área de ${latex(a_str)}$ a ${latex(b_str)}$",
             )
-            print(
-                "[DEBUG] Área bajo la curva rellenada (ax.fill_between)."
-            )  # <<< DEBUG >>>
-
             legend = self.ax.legend(
                 facecolor=self.style.colors["SECONDARY_BG"],
                 edgecolor=self.style.colors["SECONDARY_ACCENT"],
             )
-            for t in legend.get_texts():
-                t.set_color(self.style.colors["TEXT_COLOR"])
-            print("[DEBUG] Leyenda creada y estilizada.")  # <<< DEBUG >>>
-
+            [t.set_color(self.style.colors["TEXT_COLOR"]) for t in legend.get_texts()]
             self.canvas.draw()
-            print(
-                "[DEBUG] Canvas.draw() ejecutado. La gráfica debería ser visible."
-            )  # <<< DEBUG >>>
-
         except Exception as e:
-            # <<< DEBUG >>> ¡Mostraremos el error completo en la consola!
-            print("\n!!!!!!!!!! ERROR CAPTURADO EN plot_function !!!!!!!!!!")
-            traceback.print_exc()
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
             self.status_bar.config(text=f"Error al graficar: {e}")
             self.reset_plot(clear_all=True)
             self.canvas.draw()
 
-    # ... (El resto de los métodos: _apply_theme, clear_all, show_about_info, etc. se quedan igual)
+    # --- MÉTODOS PARA TEMAS Y ESTILOS ---
     def _apply_theme(self, theme_name):
         self.style.set_theme(theme_name)
         colors, styles = self.style.colors, self.style
@@ -300,16 +305,16 @@ class IntegralCalculatorApp:
 
     def _apply_theme_to_plot(self):
         self.reset_plot()
-        if all(
-            (
-                self.func_entry.get(),
-                self.lower_limit_entry.get(),
-                self.upper_limit_entry.get(),
+        (
+            all(
+                (
+                    self.func_entry.get(),
+                    self.lower_limit_entry.get(),
+                    self.upper_limit_entry.get(),
+                )
             )
-        ):
-            self.run_calculation(update_plot_only=True)
-        else:
-            self.canvas.draw()
+            and self.run_calculation(update_plot_only=True)
+        ) or self.canvas.draw()
 
     def reset_plot(self, clear_all=True):
         if clear_all:
@@ -324,12 +329,59 @@ class IntegralCalculatorApp:
         self.ax.set_xlabel("x", color=p_style["text"], fontdict=f_config)
         self.ax.set_ylabel("f(x)", color=p_style["text"], fontdict=f_config)
 
+    # --- MÉTODOS AUXILIARES Y DE HISTORIAL/EXPORTACIÓN ---
+    def export_to_pdf(self):
+        if not self.last_calculation_data:
+            messagebox.showwarning(
+                "Nada que Exportar", "Por favor, realice un cálculo primero."
+            )
+            return
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("Archivos PDF", "*.pdf"), ("Todos los archivos", "*.*")],
+            title="Guardar reporte como...",
+        )
+        if not file_path:
+            return
+        try:
+            self.status_bar.config(text="Generando PDF...")
+            temp_image_path = os.path.join(os.path.dirname(__file__), "temp_graph.png")
+            self.fig.savefig(temp_image_path, dpi=200, bbox_inches="tight")
+            pdf = pdf_generator.create_integral_report(
+                self.last_calculation_data, temp_image_path
+            )
+            pdf.output(file_path)
+            os.remove(temp_image_path)
+            self.status_bar.config(text="PDF generado exitosamente.")
+            messagebox.showinfo(
+                "Exportación Exitosa", f"El reporte ha sido guardado en:\n{file_path}"
+            )
+        except Exception as e:
+            messagebox.showerror(
+                "Error de Exportación",
+                f"No se pudo generar el archivo PDF.\n\nDetalle: {e}",
+            )
+            self.status_bar.config(text="Error al exportar PDF.")
+
+    def _show_history_window(self):
+        HistoryWindow(self.root, self, self.history)
+
+    def load_from_history(self, history_entry):
+        self.func_entry.delete(0, tk.END)
+        self.lower_limit_entry.delete(0, tk.END)
+        self.upper_limit_entry.delete(0, tk.END)
+        self.func_entry.insert(0, history_entry["func_str"])
+        self.lower_limit_entry.insert(0, history_entry["a_str"])
+        self.upper_limit_entry.insert(0, history_entry["b_str"])
+        self.run_calculation()
+
     def clear_all(self):
         self.func_entry.delete(0, tk.END)
         self.lower_limit_entry.delete(0, tk.END)
         self.upper_limit_entry.delete(0, tk.END)
         self.result_label.config(text="Ingrese una función para comenzar")
         self.status_bar.config(text="Listo")
+        self.last_calculation_data = None
         self.reset_plot()
         self.canvas.draw()
 
@@ -340,7 +392,7 @@ class IntegralCalculatorApp:
     def show_about_info(self):
         messagebox.showinfo(
             "Acerca de Calculadora de Integrales",
-            "Versión 2.0 (Génesis)\n\nDesarrollado por: [Tu Nombre Aquí]\nProyecto de modificación de interfaz y funcionalidades.",
+            "Versión 2.2 (con PDF)\n\nDesarrollado por: [Jesel Moreno]\nProyecto de modificación de interfaz y funcionalidades.",
         )
 
 

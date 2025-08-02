@@ -167,4 +167,4 @@ def create_gui():
     root.mainloop()
 
 if __name__ == "__main__":
-    create_gui()ø
+    create_gui()

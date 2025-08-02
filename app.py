@@ -1,4 +1,4 @@
-# app.py (VERSIÓN FINAL COMPLETA CON PDF Y SIN ERRORES DE ATRIBUTO)
+# app.py (VERSIÓN FINAL COMPLETA - TODAS LAS FUNCIONALIDADES INCLUIDAS)
 import tkinter as tk
 from tkinter import (
     Label,
@@ -15,10 +15,13 @@ from matplotlib.figure import Figure
 from sympy import latex
 import os
 import traceback
-import pdf_generator  # Importamos nuestro nuevo módulo
+
+# Importaciones de nuestros propios módulos
+import pdf_generator
 from style import Style
 import calculator_logic as calc
 from history_window import HistoryWindow
+from tooltip import ToolTip
 
 
 # ===============================================================
@@ -33,7 +36,6 @@ class IntegralCalculatorApp:
         self.root.geometry("1000x800")
         self.root.configure(bg=self.style.colors["BACKGROUND"])
 
-        # Inicialización de todas las variables de estado
         self.frames_to_style, self.calc_buttons, self.icons, self.history = (
             [],
             [],
@@ -42,7 +44,6 @@ class IntegralCalculatorApp:
         )
         self.last_calculation_data = None
 
-        # Llamadas a métodos de construcción
         self._load_icons()
         self._create_menu()
         self._create_widgets()
@@ -68,15 +69,11 @@ class IntegralCalculatorApp:
     def _create_menu(self):
         self.menu_bar = Menu(self.root)
         self.root.config(menu=self.menu_bar)
-
-        # Menú Archivo
         file_menu = Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Archivo", menu=file_menu)
         file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf)
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.root.quit)
-
-        # Menú Ver
         view_menu = Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Ver", menu=view_menu)
         view_menu.add_command(label="Ver Historial", command=self._show_history_window)
@@ -89,14 +86,11 @@ class IntegralCalculatorApp:
         theme_menu.add_command(
             label="Modo Claro", command=lambda: self._apply_theme("light")
         )
-
-        # Menú Ayuda
         help_menu = Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Ayuda", menu=help_menu)
         help_menu.add_command(label="Acerca de...", command=self.show_about_info)
 
     def _create_widgets(self):
-        # Todos los widgets se crean aquí
         main_frame = Frame(self.root, bg=self.style.colors["BACKGROUND"])
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         self.frames_to_style.append(main_frame)
@@ -106,11 +100,17 @@ class IntegralCalculatorApp:
         input_frame = Frame(top_frame, bg=self.style.colors["BACKGROUND"])
         input_frame.grid(row=0, column=0, padx=(0, 20), sticky="ns")
         self.frames_to_style.append(input_frame)
+
         Label(input_frame, text="f(x):", **self.style.LABEL_STYLE).grid(
             row=0, column=0, sticky="e", padx=5, pady=8
         )
         self.func_entry = Entry(input_frame, width=35, **self.style.ENTRY_STYLE)
         self.func_entry.grid(row=0, column=1)
+        ToolTip(
+            self.func_entry,
+            text="Ingrese la función a integrar.\nUse notación de Python (ej. x**3 para x^3).\nPuede usar sin(), cos(), exp(), log(), etc.",
+        )
+
         Label(input_frame, text="Límite inferior (a):", **self.style.LABEL_STYLE).grid(
             row=1, column=0, sticky="e", padx=5, pady=8
         )
@@ -121,6 +121,7 @@ class IntegralCalculatorApp:
         )
         self.upper_limit_entry = Entry(input_frame, width=20, **self.style.ENTRY_STYLE)
         self.upper_limit_entry.grid(row=2, column=1, sticky="w")
+
         action_frame = Frame(input_frame, bg=self.style.colors["BACKGROUND"])
         action_frame.grid(row=3, column=0, columnspan=2, pady=15)
         self.frames_to_style.append(action_frame)
@@ -133,6 +134,10 @@ class IntegralCalculatorApp:
             **self.style.BUTTON_STYLE,
         )
         self.calculate_button.pack(side="left", padx=10)
+        ToolTip(
+            self.calculate_button,
+            text="Realiza el cálculo de la integral y actualiza la gráfica.",
+        )
         self.clear_button = Button(
             action_frame,
             text="Limpiar",
@@ -142,6 +147,10 @@ class IntegralCalculatorApp:
             **self.style.BUTTON_STYLE,
         )
         self.clear_button.pack(side="left", padx=10)
+        ToolTip(
+            self.clear_button, text="Borra todas las entradas, resultados y la gráfica."
+        )
+
         self._create_plot_area(top_frame)
         top_frame.grid_columnconfigure(1, weight=1)
         bottom_frame = Frame(main_frame, bg=self.style.colors["BACKGROUND"])
@@ -277,7 +286,7 @@ class IntegralCalculatorApp:
             self.reset_plot(clear_all=True)
             self.canvas.draw()
 
-    # --- MÉTODOS PARA TEMAS Y ESTILOS ---
+    # --- MÉTODOS PARA ESTILOS, TEMAS Y PLOTEO ---
     def _apply_theme(self, theme_name):
         self.style.set_theme(theme_name)
         colors, styles = self.style.colors, self.style
@@ -329,7 +338,7 @@ class IntegralCalculatorApp:
         self.ax.set_xlabel("x", color=p_style["text"], fontdict=f_config)
         self.ax.set_ylabel("f(x)", color=p_style["text"], fontdict=f_config)
 
-    # --- MÉTODOS AUXILIARES Y DE HISTORIAL/EXPORTACIÓN ---
+    # --- MÉTODOS AUXILIARES (HELPERS) Y DE FUNCIONALIDADES EXTRA ---
     def export_to_pdf(self):
         if not self.last_calculation_data:
             messagebox.showwarning(
@@ -392,7 +401,7 @@ class IntegralCalculatorApp:
     def show_about_info(self):
         messagebox.showinfo(
             "Acerca de Calculadora de Integrales",
-            "Versión 2.2 (con PDF)\n\nDesarrollado por: [Jesel Moreno]\nProyecto de modificación de interfaz y funcionalidades.",
+            "Versión FINAL\n\nDesarrollado por: [Jesel Moreno]\nProyecto de modificación de interfaz y funcionalidades.",
         )
 
 

@@ -1,4 +1,4 @@
-# app.py (VERSIÓN FINAL CON ALERTAS DE VALIDACIÓN RESTAURADAS)
+# app.py (VERSIÓN CON CENTRADO DE VENTANA CORREGIDO Y ROBUSTO)
 import tkinter as tk
 from tkinter import (
     Label,
@@ -21,6 +21,7 @@ from style import Style
 import calculator_logic as calc
 from history_window import HistoryWindow
 from tooltip import ToolTip
+from welcome_window import WelcomeWindow
 
 
 class IntegralCalculatorApp:
@@ -31,23 +32,36 @@ class IntegralCalculatorApp:
         self.root.title("Calculadora de Integrales Definidas")
         self.root.geometry("1200x800")
 
-        self.calc_buttons = []
-        self.icons = {}
-        self.history = []
-        self.last_calculation_data = None
-        self.latex_photo = None
+        # --- MOVIMOS EL CENTRADO MÁS ABAJO ---
+
+        self.calc_buttons, self.icons, self.history = [], {}, []
+        self.last_calculation_data, self.latex_photo = None, None
 
         self._load_icons()
         self._create_menu()
         self._create_widgets()
         self._create_bottom_bar()
-
         self._apply_theme(self.style.theme_name)
-
         self.reset_plot()
         self.canvas.draw()
 
-    # --- Creación de Widgets (sin cambios) ---
+        # La llamada a la ventana de bienvenida
+        self.root.after(50, self._show_welcome_screen)
+
+        # --- LA SOLUCIÓN CORRECTA PARA EL CENTRADO ---
+        # Centra la ventana principal DESPUÉS de que todos los widgets
+        # han sido creados, para asegurar que las dimensiones son correctas.
+        self.root.after(0, self.center_main_window)
+
+    def _show_welcome_screen(self):
+        """Crea la instancia de la ventana de bienvenida."""
+        WelcomeWindow(self.root, self.style)
+
+    def center_main_window(self):
+        """Función auxiliar para centrar la ventana principal."""
+        self.root.eval("tk::PlaceWindow . center")
+
+    # --- Resto del código (Sin cambios) ---
     def _create_widgets(self):
         main_container = Frame(self.root)
         main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
@@ -126,31 +140,21 @@ class IntegralCalculatorApp:
         )
         self.h_separator.grid(row=0, column=0, columnspan=2, sticky="sew")
 
-    # --- LÓGICA DE CÁLCULO Y VALIDACIÓN (AQUÍ ESTÁN LOS CAMBIOS) ---
-
     def run_calculation(self):
-        """
-        ### MÉTODO CORREGIDO ###
-        Valida las entradas ANTES de iniciar cualquier cálculo o animación.
-        Si algo falta, muestra una alerta y detiene la ejecución.
-        """
         func_str = self.func_entry.get()
         a_str = self.lower_limit_entry.get()
         b_str = self.upper_limit_entry.get()
 
         if not all([func_str, a_str, b_str]):
-            # ¡La alerta que extrañábamos ha vuelto!
             messagebox.showwarning(
                 "Campos Incompletos",
-                "Por favor, complete todos los campos (función y límites) antes de calcular.",
+                "Por favor, complete todos los campos (función y límites) antes de calcular. \n\n  Si solo necesita la integral indefinida, puede ingresar 0 en ambos límites..",
             )
-            return  # Detiene el proceso aquí si faltan datos.
+            return
 
-        # Si la validación es exitosa, ahora sí procedemos con la animación.
         self._animate_progress()
 
     def _animate_progress(self, step=0):
-        """Inicia y controla la animación de la barra de progreso."""
         if step == 0:
             self.progress_label.config(text="Calculando...")
             self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
@@ -169,19 +173,12 @@ class IntegralCalculatorApp:
             )
 
     def _perform_calculation(self, update_plot_only=False):
-        """
-        ### MÉTODO SIMPLIFICADO ###
-        Realiza el cálculo asumiendo que las entradas ya fueron validadas.
-        """
         try:
-            # Obtiene los datos de nuevo (no pasa nada, es rápido).
             func_str, a_str, b_str = (
                 self.func_entry.get(),
                 self.lower_limit_entry.get(),
                 self.upper_limit_entry.get(),
             )
-            # La validación de campos vacíos ya no es necesaria aquí.
-
             func = calc.parse_expression(func_str)
             if not update_plot_only:
                 res_def, res_indef = calc.calculate_definite_integral(
@@ -201,10 +198,8 @@ class IntegralCalculatorApp:
                 self.result_label.config(
                     text=f"∫ de {a_str} a {b_str} de f(x) dx ≈ {res_def_float:.4f}\nIntegral indefinida: {self.last_calculation_data['result_indef_latex']}"
                 )
-
             self._update_latex_display(func, a_str, b_str)
             self.plot_function(func, a_str, b_str)
-
             if not update_plot_only:
                 self.progress_label.config(text="Cálculo completado.")
         except Exception as e:
@@ -214,8 +209,6 @@ class IntegralCalculatorApp:
                     f"No se pudo procesar la entrada.\n\nDetalle: {e}",
                 )
                 self.progress_label.config(text="Error en el cálculo.")
-
-    # --- Resto de la clase (sin cambios, todo lo demás está perfecto) ---
 
     def _create_bottom_bar(self):
         self.bottom_bar_frame = Frame(self.root, height=30)
@@ -291,8 +284,7 @@ class IntegralCalculatorApp:
 
     def _apply_theme(self, theme_name):
         self.style.set_theme(theme_name)
-        styles = self.style
-        colors = self.style.colors
+        styles, colors = self.style, self.style.colors
         self.style.configure_ttk_styles()
         self.root.config(bg=colors["BACKGROUND"])
 
